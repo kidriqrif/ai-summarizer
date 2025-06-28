@@ -29,9 +29,9 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # Initialize the database if not exist
-if not os.path.exists('users.db'):
-    with app.app_context():
-        db.create_all()
+# Ensure database tables are created when the app starts
+with app.app_context():
+    db.create_all()
 
 # Load summarization model once (Hugging Face)
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
