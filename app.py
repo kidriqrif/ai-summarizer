@@ -8,7 +8,7 @@ from transformers import pipeline
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'  # Replace with a secure secret key
+app.config['SECRET_KEY'] = 'fs7p75td'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -60,15 +60,16 @@ def login():
     data = request.json
     email = data.get('email')
     password = data.get('password')
-    if not email or not password:
-        return jsonify({"error": "Email and password required."}), 400
-
+    print(f"Login attempt for: {email}")  # debug
     user = User.query.filter_by(email=email).first()
-    if not user or not check_password_hash(user.password, password):
-        return jsonify({"error": "Invalid credentials."}), 401
-
-    login_user(user)
-    return jsonify({"message": "Logged in successfully."})
+    if user:
+        print("User found")
+        if check_password_hash(user.password, password):
+            print("Password correct, logging in")
+            login_user(user)
+            return jsonify({"message": "Logged in successfully."})
+    print("Login failed")
+    return jsonify({"error": "Invalid credentials."}), 401
 
 # Logout API
 @app.route('/logout', methods=['POST'])
