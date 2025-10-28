@@ -5,10 +5,11 @@ from threading import Thread
 import time
 from typing import Optional
 
-from config_manager import ConfigManager
+from config_manager import ConfigManager, OverlayConfig
 from strategy_engine import StrategyEngine, Hand, Action
 from card_counter import CardCounter, CountingSystem
 from screen_reader import ScreenReader, GameState
+from overlay import OverlayWindow, CompactOverlay
 
 
 class BlackjackBotGUI:
@@ -40,6 +41,36 @@ class BlackjackBotGUI:
 
         self.monitoring = False
         self.monitor_thread: Optional[Thread] = None
+
+        # Initialize overlay
+        overlay_cfg = OverlayConfig(
+            x=self.config.overlay.x,
+            y=self.config.overlay.y,
+            width=self.config.overlay.width,
+            height=self.config.overlay.height,
+            opacity=self.config.overlay.opacity,
+            always_on_top=self.config.overlay.always_on_top,
+            show_count=self.config.overlay.show_count,
+            show_betting=self.config.overlay.show_betting,
+            compact_mode=self.config.overlay.compact_mode
+        )
+
+        if self.config.overlay.compact_mode:
+            self.compact_overlay = CompactOverlay(
+                x=self.config.overlay.x,
+                y=self.config.overlay.y,
+                opacity=self.config.overlay.opacity
+            )
+            self.overlay = None
+        else:
+            self.overlay = OverlayWindow(config=overlay_cfg)
+            self.compact_overlay = None
+
+        if self.config.overlay.enabled:
+            if self.overlay:
+                self.overlay.show()
+            elif self.compact_overlay:
+                self.compact_overlay.show()
 
         self._create_ui()
 
@@ -81,6 +112,13 @@ class BlackjackBotGUI:
 
         ttk.Button(control_frame, text="Manual Read",
                   command=self.manual_read).pack(side='left', padx=5)
+
+        # Overlay toggle button
+        self.overlay_button = ttk.Button(control_frame, text="Show Overlay",
+                                        command=self.toggle_overlay)
+        self.overlay_button.pack(side='left', padx=5)
+        if self.config.overlay.enabled:
+            self.overlay_button.config(text="Hide Overlay")
 
         # Game state frame
         state_frame = ttk.LabelFrame(self.main_tab, text="Current Game State", padding=10)
@@ -207,6 +245,34 @@ class BlackjackBotGUI:
         ttk.Label(counting_frame, text="Penetration Reset %:").grid(row=3, column=0, sticky='w', pady=2)
         self.penetration_var = tk.DoubleVar(value=self.config.counting.penetration_reset_threshold)
         ttk.Entry(counting_frame, textvariable=self.penetration_var, width=10).grid(row=3, column=1, sticky='w', padx=5)
+
+        # Overlay configuration
+        overlay_frame = ttk.LabelFrame(self.config_tab, text="Overlay Window", padding=10)
+        overlay_frame.pack(fill='x', padx=10, pady=5)
+
+        self.overlay_enabled_var = tk.BooleanVar(value=self.config.overlay.enabled)
+        ttk.Checkbutton(overlay_frame, text="Enable Overlay Window",
+                       variable=self.overlay_enabled_var).grid(row=0, column=0, columnspan=2, sticky='w', pady=2)
+
+        self.compact_mode_var = tk.BooleanVar(value=self.config.overlay.compact_mode)
+        ttk.Checkbutton(overlay_frame, text="Compact Mode (minimal display)",
+                       variable=self.compact_mode_var).grid(row=1, column=0, columnspan=2, sticky='w', pady=2)
+
+        ttk.Label(overlay_frame, text="Opacity (0.1-1.0):").grid(row=2, column=0, sticky='w', pady=2)
+        self.opacity_var = tk.DoubleVar(value=self.config.overlay.opacity)
+        ttk.Entry(overlay_frame, textvariable=self.opacity_var, width=10).grid(row=2, column=1, sticky='w', padx=5)
+
+        self.always_on_top_var = tk.BooleanVar(value=self.config.overlay.always_on_top)
+        ttk.Checkbutton(overlay_frame, text="Always on top",
+                       variable=self.always_on_top_var).grid(row=3, column=0, columnspan=2, sticky='w', pady=2)
+
+        self.overlay_show_count_var = tk.BooleanVar(value=self.config.overlay.show_count)
+        ttk.Checkbutton(overlay_frame, text="Show card count",
+                       variable=self.overlay_show_count_var).grid(row=4, column=0, columnspan=2, sticky='w', pady=2)
+
+        self.overlay_show_betting_var = tk.BooleanVar(value=self.config.overlay.show_betting)
+        ttk.Checkbutton(overlay_frame, text="Show betting recommendation",
+                       variable=self.overlay_show_betting_var).grid(row=5, column=0, columnspan=2, sticky='w', pady=2)
 
         # Save button
         ttk.Button(self.config_tab, text="Save Configuration",
@@ -369,6 +435,7 @@ class BlackjackBotGUI:
         self.root.after(0, lambda: self.reason_text.insert('1.0', reason))
 
         # Get betting recommendation
+        bet_advice = None
         if self.config.counting.enabled:
             bet_advice = self.card_counter.get_betting_advice(
                 self.config.betting.min_bet,
@@ -383,6 +450,9 @@ class BlackjackBotGUI:
             self.root.after(0, lambda: self.bet_reason_label.config(
                 text=bet_advice['reason']
             ))
+
+        # Update overlay if enabled
+        self._update_overlay(action, game_state, bet_advice)
 
     def _get_action_reason(self, hand: Hand, dealer_card: str, action: Action) -> str:
         """Generate explanation for recommended action."""
@@ -443,6 +513,15 @@ class BlackjackBotGUI:
                 system=self.counting_system_var.get(),
                 auto_reset_on_shuffle=self.auto_reset_var.get(),
                 penetration_reset_threshold=self.penetration_var.get()
+            )
+
+            self.config.update_overlay(
+                enabled=self.overlay_enabled_var.get(),
+                compact_mode=self.compact_mode_var.get(),
+                opacity=self.opacity_var.get(),
+                always_on_top=self.always_on_top_var.get(),
+                show_count=self.overlay_show_count_var.get(),
+                show_betting=self.overlay_show_betting_var.get()
             )
 
             # Reinitialize components with new config
@@ -511,8 +590,70 @@ class BlackjackBotGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save regions: {e}")
 
+    def toggle_overlay(self):
+        """Toggle overlay window visibility."""
+        if self.overlay:
+            if self.overlay.is_visible:
+                self.overlay.hide()
+                self.overlay_button.config(text="Show Overlay")
+            else:
+                self.overlay.show()
+                self.overlay_button.config(text="Hide Overlay")
+        elif self.compact_overlay:
+            if self.compact_overlay.window.winfo_viewable():
+                self.compact_overlay.hide()
+                self.overlay_button.config(text="Show Overlay")
+            else:
+                self.compact_overlay.show()
+                self.overlay_button.config(text="Hide Overlay")
+
+    def _update_overlay(self, action: Action, game_state: GameState, bet_advice: dict):
+        """Update overlay with current recommendations."""
+        if not self.overlay and not self.compact_overlay:
+            return
+
+        try:
+            if self.config.overlay.compact_mode and self.compact_overlay:
+                # Update compact overlay
+                stats = self.card_counter.get_stats()
+                bet_amount = bet_advice['bet'] if bet_advice else self.config.betting.min_bet
+                self.compact_overlay.update(
+                    action=action,
+                    true_count=stats['true_count'],
+                    bet=bet_amount
+                )
+            elif self.overlay:
+                # Update full overlay
+                self.overlay.update_action(action)
+                self.overlay.update_game_state(game_state.dealer_cards, game_state.player_cards)
+
+                if self.config.counting.enabled:
+                    stats = self.card_counter.get_stats()
+                    self.overlay.update_count(
+                        running_count=stats['running_count'],
+                        true_count=stats['true_count'],
+                        advantage=stats['player_advantage']
+                    )
+
+                if bet_advice:
+                    self.overlay.update_betting(
+                        bet_amount=bet_advice['bet'],
+                        units=bet_advice['units']
+                    )
+        except Exception as e:
+            print(f"Error updating overlay: {e}")
+
     def run(self):
         """Start the GUI application."""
+        # Cleanup overlay on close
+        def on_closing():
+            if self.overlay:
+                self.overlay.destroy()
+            if self.compact_overlay:
+                self.compact_overlay.destroy()
+            self.root.destroy()
+
+        self.root.protocol("WM_DELETE_WINDOW", on_closing)
         self.root.mainloop()
 
 

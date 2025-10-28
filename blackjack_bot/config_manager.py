@@ -62,6 +62,23 @@ class CardCountingConfig:
     penetration_reset_threshold: float = 75.0  # Auto-reset at this % penetration
 
 
+@dataclass
+class OverlayConfig:
+    """Overlay window configuration."""
+    enabled: bool = False
+    x: int = 100
+    y: int = 100
+    width: int = 300
+    height: int = 250
+    opacity: float = 0.85
+    always_on_top: bool = True
+    show_count: bool = True
+    show_betting: bool = True
+    show_stats: bool = True
+    font_size: int = 11
+    compact_mode: bool = False
+
+
 class ConfigManager:
     """Manages all configuration settings."""
 
@@ -71,6 +88,7 @@ class ConfigManager:
         self.betting = BettingConfig()
         self.screen = ScreenConfig()
         self.counting = CardCountingConfig()
+        self.overlay = OverlayConfig()
         self.load()
 
     def load(self):
@@ -91,6 +109,8 @@ class ConfigManager:
                 self.screen = ScreenConfig(**data['screen'])
             if 'counting' in data:
                 self.counting = CardCountingConfig(**data['counting'])
+            if 'overlay' in data:
+                self.overlay = OverlayConfig(**data['overlay'])
         except Exception as e:
             print(f"Error loading config: {e}")
             self.save()  # Reset to defaults
@@ -101,7 +121,8 @@ class ConfigManager:
             'game_rules': asdict(self.game_rules),
             'betting': asdict(self.betting),
             'screen': asdict(self.screen),
-            'counting': asdict(self.counting)
+            'counting': asdict(self.counting),
+            'overlay': asdict(self.overlay)
         }
 
         with open(self.config_file, 'w') as f:
@@ -133,4 +154,11 @@ class ConfigManager:
         for key, value in kwargs.items():
             if hasattr(self.counting, key):
                 setattr(self.counting, key, value)
+        self.save()
+
+    def update_overlay(self, **kwargs):
+        """Update overlay configuration."""
+        for key, value in kwargs.items():
+            if hasattr(self.overlay, key):
+                setattr(self.overlay, key, value)
         self.save()
