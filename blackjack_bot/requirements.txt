@@ -1,0 +1,23 @@
+# Blackjack Bot Requirements
+
+# GUI
+tkinter-tooltip>=0.1.0
+
+# Screen capture
+mss>=9.0.1
+Pillow>=10.0.0
+
+# OCR
+pytesseract>=0.3.10
+opencv-python>=4.8.0
+
+# Computer vision
+numpy>=1.24.0
+
+# Data handling
+dataclasses-json>=0.6.0
+
+# Note: You need to install Tesseract OCR separately:
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki
+# Mac: brew install tesseract
+# Linux: sudo apt-get install tesseract-ocr
