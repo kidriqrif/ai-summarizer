@@ -34,7 +34,8 @@ class BlackjackBotGUI:
             dealer_region=self.config.screen.dealer_region,
             player_region=self.config.screen.player_region,
             balance_region=self.config.screen.balance_region,
-            bet_region=self.config.screen.bet_region
+            bet_region=self.config.screen.bet_region,
+            shuffle_region=self.config.screen.shuffle_region
         )
 
         self.monitoring = False
@@ -199,6 +200,14 @@ class BlackjackBotGUI:
                     values=['hi_lo', 'ko', 'omega_ii', 'halves'],
                     state='readonly', width=15).grid(row=1, column=1, sticky='w', padx=5)
 
+        self.auto_reset_var = tk.BooleanVar(value=self.config.counting.auto_reset_on_shuffle)
+        ttk.Checkbutton(counting_frame, text="Auto-reset count on shuffle detection",
+                       variable=self.auto_reset_var).grid(row=2, column=0, columnspan=2, sticky='w', pady=2)
+
+        ttk.Label(counting_frame, text="Penetration Reset %:").grid(row=3, column=0, sticky='w', pady=2)
+        self.penetration_var = tk.DoubleVar(value=self.config.counting.penetration_reset_threshold)
+        ttk.Entry(counting_frame, textvariable=self.penetration_var, width=10).grid(row=3, column=1, sticky='w', padx=5)
+
         # Save button
         ttk.Button(self.config_tab, text="Save Configuration",
                   command=self.save_configuration).pack(pady=10)
@@ -215,7 +224,8 @@ class BlackjackBotGUI:
             ("Dealer Cards", "dealer_region"),
             ("Player Cards", "player_region"),
             ("Balance", "balance_region"),
-            ("Bet Amount", "bet_region")
+            ("Bet Amount", "bet_region"),
+            ("Shuffle Indicator", "shuffle_region")
         ]
 
         self.region_vars = {}
@@ -288,11 +298,26 @@ class BlackjackBotGUI:
             # Read game state
             game_state = self.screen_reader.read_game_state()
 
+            # Check for shuffle/new shoe and auto-reset if enabled
+            if game_state.shuffle_detected and self.config.counting.auto_reset_on_shuffle:
+                self.card_counter.reset()
+                print("Shuffle detected! Count automatically reset to zero.")
+                self.root.after(0, lambda: messagebox.showinfo(
+                    "Shuffle Detected",
+                    "New shoe detected - count has been reset to zero."
+                ))
+
             # Update display
             self.root.after(0, lambda: self._update_display(game_state))
 
             # Update card count
             if self.config.counting.enabled:
+                # Check penetration-based auto-reset
+                stats = self.card_counter.get_stats()
+                if stats['penetration'] >= self.config.counting.penetration_reset_threshold:
+                    self.card_counter.reset()
+                    print(f"Penetration threshold ({self.config.counting.penetration_reset_threshold}%) reached. Count reset.")
+
                 # Add new cards to count
                 all_cards = game_state.dealer_cards + game_state.player_cards
                 for card in all_cards:
@@ -415,7 +440,9 @@ class BlackjackBotGUI:
 
             self.config.update_counting(
                 enabled=self.counting_enabled_var.get(),
-                system=self.counting_system_var.get()
+                system=self.counting_system_var.get(),
+                auto_reset_on_shuffle=self.auto_reset_var.get(),
+                penetration_reset_threshold=self.penetration_var.get()
             )
 
             # Reinitialize components with new config
@@ -477,7 +504,8 @@ class BlackjackBotGUI:
                 dealer=self.config.screen.dealer_region,
                 player=self.config.screen.player_region,
                 balance=self.config.screen.balance_region,
-                bet=self.config.screen.bet_region
+                bet=self.config.screen.bet_region,
+                shuffle=self.config.screen.shuffle_region
             )
             messagebox.showinfo("Success", "Regions saved successfully!")
         except Exception as e:

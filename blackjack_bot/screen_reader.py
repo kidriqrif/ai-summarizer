@@ -20,6 +20,7 @@ class GameState:
     can_double: bool = True
     can_split: bool = False
     can_surrender: bool = True
+    shuffle_detected: bool = False  # New: indicates if shuffle/new shoe detected
 
 
 class ScreenReader:
@@ -43,7 +44,8 @@ class ScreenReader:
     }
 
     def __init__(self, dealer_region: Dict = None, player_region: Dict = None,
-                 balance_region: Dict = None, bet_region: Dict = None):
+                 balance_region: Dict = None, bet_region: Dict = None,
+                 shuffle_region: Dict = None):
         """
         Initialize screen reader with capture regions.
 
@@ -52,13 +54,16 @@ class ScreenReader:
             player_region: Dict with x, y, width, height for player cards
             balance_region: Dict with x, y, width, height for balance display
             bet_region: Dict with x, y, width, height for bet display
+            shuffle_region: Dict with x, y, width, height for shuffle indicator (optional)
         """
         self.dealer_region = dealer_region or {"x": 0, "y": 0, "width": 400, "height": 150}
         self.player_region = player_region or {"x": 0, "y": 200, "width": 400, "height": 150}
         self.balance_region = balance_region or {"x": 0, "y": 400, "width": 200, "height": 50}
         self.bet_region = bet_region or {"x": 0, "y": 450, "width": 200, "height": 50}
+        self.shuffle_region = shuffle_region or {"x": 200, "y": 0, "width": 300, "height": 100}
 
         self.sct = mss.mss()
+        self.last_cards_seen = []  # Track last cards to detect new shoe
 
     def capture_region(self, region: Dict) -> np.ndarray:
         """
@@ -225,6 +230,42 @@ class ScreenReader:
         text = self.ocr_text(img)
         return self.parse_currency(text)
 
+    def detect_shuffle(self) -> bool:
+        """
+        Detect if shoe is being shuffled or changed.
+
+        Looks for common shuffle indicators:
+        - "Shuffle" or "Shuffling" text
+        - "New Shoe" text
+        - "Dealer Shuffle" text
+        - No cards visible (empty table between rounds at start of shoe)
+
+        Returns:
+            True if shuffle detected
+        """
+        # Method 1: Check shuffle region for shuffle-related text
+        img = self.capture_region(self.shuffle_region)
+        text = self.ocr_text(img)
+
+        shuffle_keywords = [
+            'shuffle', 'shuffling', 'new shoe', 'new deck',
+            'dealer shuffle', 'shuffled', 'reshuffling'
+        ]
+
+        for keyword in shuffle_keywords:
+            if keyword in text:
+                return True
+
+        # Method 2: Check dealer region for shuffle indicators
+        dealer_img = self.capture_region(self.dealer_region)
+        dealer_text = self.ocr_text(dealer_img)
+
+        for keyword in shuffle_keywords:
+            if keyword in dealer_text:
+                return True
+
+        return False
+
     def read_game_state(self) -> GameState:
         """
         Read complete game state from screen.
@@ -236,6 +277,7 @@ class ScreenReader:
         player_cards = self.read_player_cards()
         balance = self.read_balance()
         current_bet = self.read_bet()
+        shuffle_detected = self.detect_shuffle()
 
         # Determine game state
         can_split = (len(player_cards) == 2 and
@@ -253,11 +295,12 @@ class ScreenReader:
             current_bet=current_bet,
             can_double=can_double,
             can_split=can_split,
-            can_surrender=can_surrender
+            can_surrender=can_surrender,
+            shuffle_detected=shuffle_detected
         )
 
     def update_regions(self, dealer: Dict = None, player: Dict = None,
-                      balance: Dict = None, bet: Dict = None):
+                      balance: Dict = None, bet: Dict = None, shuffle: Dict = None):
         """
         Update capture regions.
 
@@ -266,6 +309,7 @@ class ScreenReader:
             player: New player region
             balance: New balance region
             bet: New bet region
+            shuffle: New shuffle indicator region
         """
         if dealer:
             self.dealer_region = dealer
@@ -275,6 +319,8 @@ class ScreenReader:
             self.balance_region = balance
         if bet:
             self.bet_region = bet
+        if shuffle:
+            self.shuffle_region = shuffle
 
     def save_calibration_screenshot(self, filename: str = "calibration.png"):
         """
@@ -294,7 +340,8 @@ class ScreenReader:
             (self.dealer_region, (255, 0, 0), "Dealer"),
             (self.player_region, (0, 255, 0), "Player"),
             (self.balance_region, (0, 0, 255), "Balance"),
-            (self.bet_region, (255, 255, 0), "Bet")
+            (self.bet_region, (255, 255, 0), "Bet"),
+            (self.shuffle_region, (255, 0, 255), "Shuffle")
         ]
 
         for region, color, label in regions:

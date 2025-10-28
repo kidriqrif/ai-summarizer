@@ -35,6 +35,7 @@ class ScreenConfig:
     player_region: Dict[str, int] = None
     balance_region: Dict[str, int] = None
     bet_region: Dict[str, int] = None
+    shuffle_region: Dict[str, int] = None
 
     def __post_init__(self):
         if self.dealer_region is None:
@@ -45,6 +46,8 @@ class ScreenConfig:
             self.balance_region = {"x": 0, "y": 400, "width": 200, "height": 50}
         if self.bet_region is None:
             self.bet_region = {"x": 0, "y": 450, "width": 200, "height": 50}
+        if self.shuffle_region is None:
+            self.shuffle_region = {"x": 200, "y": 0, "width": 300, "height": 100}
 
 
 @dataclass
@@ -55,6 +58,8 @@ class CardCountingConfig:
     true_count_threshold: float = 2.0  # Start increasing bets at TC +2
     wong_out: bool = False  # Leave table at negative counts
     wong_out_threshold: float = -1.0
+    auto_reset_on_shuffle: bool = True  # Automatically reset count when shuffle detected
+    penetration_reset_threshold: float = 75.0  # Auto-reset at this % penetration
 
 
 class ConfigManager:
