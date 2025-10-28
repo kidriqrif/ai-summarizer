@@ -1,5 +1,7 @@
 """Screen capture and OCR for reading blackjack game state."""
 import re
+import os
+import sys
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import mss
@@ -7,6 +9,26 @@ import cv2
 import numpy as np
 from PIL import Image
 import pytesseract
+
+# Auto-detect Tesseract installation path
+if os.name == 'nt':  # Windows
+    possible_paths = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME', '')),
+    ]
+    tesseract_found = False
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            tesseract_found = True
+            print(f"Found Tesseract at: {path}")
+            break
+
+    if not tesseract_found:
+        print("WARNING: Tesseract not found in common locations.")
+        print("Please install Tesseract OCR or set the path manually.")
+        print("See TESSERACT_INSTALL.md for installation instructions.")
 
 
 @dataclass
